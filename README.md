@@ -162,3 +162,141 @@ IF Fail, delete it
 ```bash
 kubectl delete job run-report-chinagtt -n <namespace>
 ```
+
+# Deploy DB via rancher:
+
+Here's the same process, done entirely through Rancher's UI — no command line. I'm using "Import YAML" for each resource rather than the structured forms, since that's the reliable path (the structured form is what mangled the command earlier with that comma issue).
+
+## Step 1 — Create Postgres (Secret + storage + Deployment + Service, all at once)
+
+1. In Rancher, go to the correct cluster → project/namespace where the app itself is running.
+
+1. Find the Import YAML button (top-right corner, usually a cloud icon with an up-arrow, or a + — present on almost every screen in Rancher's cluster view).
+2. Paste the block below into the text box. Before pasting, replace <PICK-A-PASSWORD> with an actual password (same value used twice — it appears in two places).
+
+```yml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+type: Opaque
+stringData:
+  POSTGRES_USER: reporting_platform
+  POSTGRES_PASSWORD: <PICK-A-PASSWORD>
+  POSTGRES_DB: reporting_platform
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: {storage: 1Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          envFrom:
+            - secretRef: {name: postgres-credentials}
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: postgres-pvc}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector: {app: postgres}
+  ports:
+    - port: 5432
+```
+
+4. Click Import
+
+## Step 2 — Confirm Postgres is running
+
+
+5. Go to Workloads → Pods (left navigation). Find the pod named something like `postgres-xxxxxxxxxx`
+6. Wait until its status shows Running/Active. Don't move on until it does. 
+
+## Step 3 — Point the app at the new Postgres
+
+7. Go to Storage → Secrets (or wherever Secrets are listed in the left nav — same place <YOUR_APP_SECRET> was created earlier).
+8. Open the app's existing Secret (the one already referenced by the run-report Job).
+9. Find the DATABASE_URL key and edit its value to exactly
+
+```bash
+postgresql+psycopg2://reporting_platform:<SAME-PASSWORD-AS-STEP-1>@postgres:5432/reporting_platform
+```
+
+10. Click Save
+
+## Step 4 — Create the database tables (migration)
+
+11.  Go back to Import YAML again. Paste this (replace `<YOUR_IMAGE_REF>` and `<YOUR_APP_SECRET>` with the same values already used in `job-run-report.yaml`):
+
+```yml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: <YOUR_IMAGE_REF>
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: <YOUR_APP_SECRET>
+
+```
+
+12.  Click Import
+
+## Step 5 — Confirm the migration succeeded
+
+13. Go to Workloads → Pods, find the pod named db-migrate-xxxxxxxxxx.
+14. Click the ⋮ (or "View Logs") button next to it → View Logs.
+15. Confirm the output shows migration steps running with no errors (no need to memorize exact text — just confirm there's no red/error output at the end).
+
+## Step 6 — Run the actual report against the new database
+16. Go to Workloads → Jobs, find run-report-chinagtt.
+17. If it still exists from before, click ⋮ → Delete on it first (Job names can't be reused).
+18. Go to Import YAML again and re-paste the original job-run-report.yaml content (same as before, image/secret already filled in).
+19. Click Import.
+20. Once it finishes, click View Logs on its pod the same way as step 14 — confirm it says SFTP_COMPLETED.
+
+
+## Step 7 — Confirm the data actually landed in Postgres
+21. Go to Workloads → Pods, find the postgres-xxxxxxxxxx pod.
+22. Click ⋮ → Execute Shell (opens a terminal inside that pod, in-browser).
+23. In that terminal, type:
+```bash
+psql -U reporting_platform -d reporting_platform -c "SELECT * FROM report_execution ORDER BY created_utc DESC LIMIT 1;"
+```
+
+24. Confirm a row comes back with status = SFTP_COMPLETED
