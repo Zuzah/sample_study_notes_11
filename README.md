@@ -344,3 +344,67 @@ spec:
 5. Check the result: Workloads → Pods, find run-report-chinagtt-xxxxxxxxxx, click ⋮ → View Logs.
 
 You should see the alembic migration output first, then the pipeline's own log lines, ending in SFTP_COMPLETED.
+
+# Another way
+
+1. Build the app with just docker build, no docker-compose-dev (skipped)
+
+```bash
+docker build
+# or to tagit
+docker build -t <your-image-name>:<tag> .
+```
+
+2. Push it to your registry
+
+```yml
+docker tag <your-image-name>:<tag> <registry>/<your-image-name>:<tag>
+docker push <registry>/<your-image-name>:<tag>
+```
+
+3. 6 Keys are required for Python app to work:
+
+```bash
+FENERGO_BASE_URL, FENERGO_TENANT_ID, FENERGO_CLIENT_ID, FENERGO_CLIENT_SECRET, FENERGO_TOKEN_URL, FENERGO_SCOPE
+
+```
+
+4. Confirm a PVC is available (Rancher: Storage → PersistentVolumeClaims)
+
+5.  Delete any old Job with the same name (Job names aren't reusable)
+   
+6.  Import the Job — this combines the SQLite migration (alembic) and the report submission (--no-sftp) into one run
+
+```yml
+ apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: <YOUR_IMAGE_REF>
+          command: ["sh", "-c", "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"]
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          envFrom:
+            - secretRef:
+                name: <YOUR_APP_SECRET>
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: <EXISTING_PVC_NAME>
+
+```
+
+7. Check the result
+Rancher: Workloads → Pods → run-report-chinagtt-xxxxxxxxxx → ⋮ → View Logs
