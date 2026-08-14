@@ -375,8 +375,8 @@ FENERGO_BASE_URL, FENERGO_TENANT_ID, FENERGO_CLIENT_ID, FENERGO_CLIENT_SECRET, F
    
 6.  Import the Job — this combines the SQLite migration (alembic) and the report submission (--no-sftp) into one run
 
-```yml
- apiVersion: batch/v1
+```
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: run-report-chinagtt
