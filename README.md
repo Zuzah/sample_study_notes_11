@@ -300,3 +300,47 @@ psql -U reporting_platform -d reporting_platform -c "SELECT * FROM report_execut
 ```
 
 24. Confirm a row comes back with status = SFTP_COMPLETED
+
+# Using SQLLite3
+
+## Steps (Rancher UI, same pattern as before)
+If you already changed DATABASE_URL to the Postgres connection string earlier, undo it:
+
+Go to Storage → Secrets, open the app's Secret.
+Set DATABASE_URL to: sqlite:///./reporting_platform.db
+Click Save.
+(If you never touched DATABASE_URL at all, skip this — nothing to do.)
+
+Delete the old Jobs if they still exist (names can't be reused):
+
+Workloads → Jobs → find run-report-chinagtt (and db-migrate if you created it) → ⋮ → Delete on each.
+Import YAML (top-right Import YAML button) with this — fill in the same <YOUR_IMAGE_REF> / <YOUR_APP_SECRET> values already used before:
+
+2. Use yml
+
+```
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: <YOUR_IMAGE_REF>
+          command: ["sh", "-c", "alembic upgrade head && python -m app.cli run-report ChinaGTTReport"]
+          envFrom:
+            - secretRef:
+                name: <YOUR_APP_SECRET>
+
+```
+
+4. Click Import.
+
+5. Check the result: Workloads → Pods, find run-report-chinagtt-xxxxxxxxxx, click ⋮ → View Logs.
+
+You should see the alembic migration output first, then the pipeline's own log lines, ending in SFTP_COMPLETED.
