@@ -78,3 +78,61 @@ i.e kubectl exec -it <pod> -- python -m app.cli run-report ChinaGTTReport
     -> if the row is GONE, there's no real persistence and this needs a PVC or real Postgres
 
 ```
+
+Job manifist file:
+
+1. Get <IMAGE REF>
+
+```
+kubectl get pods -n <namespace>
+kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[0].image}'
+
+```
+
+IF its a Deployment instead of bare pod, then do this for image ref
+
+```bash
+kubectl get deployment <deployment-name> -n <namespace> -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
+
+2. Get <YOUR_APP_SECRET> — the Secret/ConfigMap holding env vars
+
+```bash
+kubectl describe pod <pod-name> -n <namespace>
+```
+
+Look in the "Environment Variables from:" section of the output — it lists the actual `Secret/ConfigMap` name(s) the container pulls `FENERGO_*/SFTP_*/DATABASE_URL/ENV` from. If it's a Deployment, run the same against `kubectl describe deployment <deployment-name> -n <namespace>` instead.
+
+If there's more than one Secret/ConfigMap (common — e.g. one for non-secret config, one for actual secrets), list all of them; I'll add each as its own envFrom: entry in the file.
+
+Add this file
+
+```yml
+# One-shot K8s Job to run ChinaGTTReport (the only report with real, executable SQL today).
+# Fill in the two <...> placeholders before applying - everything else is ready to go.
+#
+# backoffLimit: 0 is intentional, not an oversight - do NOT change this. K8s Jobs retry
+# failed pods by default (backoffLimit defaults to 6). A retry of this specific command
+# would resubmit to Fenergo from scratch even if the original submission already succeeded
+# and only a later step (poll/download/transform/deliver) failed - a known, documented risk
+# in this app (see docs/architecture.md Sec 4's CAUTION note). Until resumable execution is
+# designed, this Job must fail loudly once and stop, not retry on its own.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: <YOUR_IMAGE_REF>          # e.g. your-registry/fenergo-platform:latest - same image the existing (non-working) pod/deployment uses
+          command: ["python", "-m", "app.cli", "run-report", "ChinaGTTReport"]
+          envFrom:
+            - secretRef:
+                name: <YOUR_APP_SECRET>     # whatever Secret/ConfigMap the existing pod spec already references for FENERGO_*/SFTP_*/DATABASE_URL/ENV
+
+```
