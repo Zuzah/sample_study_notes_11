@@ -52,6 +52,8 @@ docker compose -f docker-compose.yml -f docker-compose-dev.yml run --rm app alem
 6. Run a real, live report end-to-end (ChinaGTTReport is the only report with real SQL)
    kubectl exec -it -n <namespace> <pod> -- python -m app.cli run-report ChinaGTTReport
 
+i.e kubectl exec -it <pod> -- python -m app.cli run-report ChinaGTTReport
+
 7. Read the output of step 6 carefully
    - "SFTP_COMPLETED" -> full success, skip to step 8
    - "FAILED: CERTIFICATE_VERIFY_FAILED..." -> Root CA not in the pod's trust store
