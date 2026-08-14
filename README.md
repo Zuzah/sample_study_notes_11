@@ -117,6 +117,11 @@ Add this file
 # and only a later step (poll/download/transform/deliver) failed - a known, documented risk
 # in this app (see docs/architecture.md Sec 4's CAUTION note). Until resumable execution is
 # designed, this Job must fail loudly once and stop, not retry on its own.
+#
+# ttlSecondsAfterFinished: 3600 - auto-deletes this Job (and its pod) 1 hour after it
+# finishes, success or failure, so it doesn't need to be deleted by hand before the next
+# run. Pull logs (kubectl logs job/run-report-chinagtt) before that hour is up if you need
+# them - once it's cleaned up, the logs go with it.
 
 apiVersion: batch/v1
 kind: Job
@@ -124,6 +129,7 @@ metadata:
   name: run-report-chinagtt
 spec:
   backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
   template:
     spec:
       restartPolicy: Never
@@ -135,4 +141,24 @@ spec:
             - secretRef:
                 name: <YOUR_APP_SECRET>     # whatever Secret/ConfigMap the existing pod spec already references for FENERGO_*/SFTP_*/DATABASE_URL/ENV
 
+
+```
+
+Run it:
+
+```bash
+kubectl apply -f job-run-report.yaml -n <namespace>
+```
+
+Confirm it:
+
+```bash
+kubectl logs -n <namespace> job/run-report-chinagtt
+
+```
+
+IF Fail, delete it
+
+```bash
+kubectl delete job run-report-chinagtt -n <namespace>
 ```
