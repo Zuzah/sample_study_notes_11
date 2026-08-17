@@ -408,3 +408,231 @@ spec:
 
 7. Check the result
 Rancher: Workloads → Pods → run-report-chinagtt-xxxxxxxxxx → ⋮ → View Logs
+
+# Sun, Aug 16
+
+# run-report — Kubernetes deployment steps
+
+Pre-validated end-to-end (real Fenergo call, real Rancher Import YAML) on a local cluster.
+Files: `namespace.yaml`, `secret.template.yaml`, `deploy.yaml`. Ignore every other file in
+this folder.
+
+## Two rules
+
+1. **Whatever Dockerfile you use, your built image must pass this before Rancher:**
+   `docker run --rm <image>:<tag> python -m app.cli --help` → must print a command list.
+   This is what actually failed last deployment (`python` on `PATH` resolved to a
+   different interpreter than the one with dependencies installed) — this one command
+   catches that regardless of how your Dockerfile differs from this repo's.
+2. **No `.env` file, no volume/file-mounted secret.** Real env vars only, via the Secret's
+   `envFrom` — the app doesn't read config any other way.
+
+## Steps
+
+| # | Action | Confirm |
+|---|--------|---------|
+| 1 | Build image, run the smoke test above, push to your registry | command list printed, then image present in registry |
+| 2 | Edit `deploy.yaml`: replace `<<< REPLACE_WITH_YOUR_REGISTRY_IMAGE:TAG >>>` with your image | — |
+| 3 | Edit `secret.template.yaml`: fill in 6 `REPLACE_ME` values, save as `secret.yaml` (do not commit) | — |
+| 4 | Rancher → **Import YAML** → paste `namespace.yaml` → Import | namespace `fenergo-platform` exists |
+| 5 | Rancher → **Import YAML** → paste `secret.yaml` → Import | Secret `fenergo-secrets` exists in that namespace |
+| 6 | Rancher → **Import YAML** → paste `deploy.yaml` → Import | Workloads → Jobs → `run-report-chinagtt` reaches `1/1` |
+| 7 | Click the pod → **View Logs** | last line reads `TRANSFORMED - execution_id=...` |
+
+## If step 7 fails
+
+Not a YAML problem — this exact sequence already succeeded. Two known causes, need your
+input not a code fix (`docs/roadmap.md` Days 27–29):
+- Corporate proxy blocking egress to Fenergo
+- Root CA not trusted by the pod
+
+## Deliberately not included
+
+`--no-sftp` (real SFTP not finalized yet), SQLite-on-PVC not Postgres (not yet
+provisioned).
+
+## Files to use
+
+deploy.yml
+```yml
+# PVC + Job — apply AFTER namespace.yaml and secret.yaml (this Job's Secret reference
+# must already exist, and both need the namespace to already exist).
+#
+# SQLite on a PersistentVolumeClaim (not Postgres) so the DB survives across separate Job
+# runs; --no-sftp so this run doesn't depend on real SFTP host/credentials being finalized
+# yet; alembic migration combined into the same command as run-report since SQLite's file
+# lives in the pod's own filesystem, so a separate migration Job would touch an
+# unpersisted, different file unless it shared this exact PVC mount.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenergo-data
+  namespace: fenergo-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+  namespace: fenergo-platform
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run-report
+          # <<< REPLACE WITH YOUR REGISTRY IMAGE >>> — the only line in this file that
+          # should need to change.
+          image: "<<< REPLACE_WITH_YOUR_REGISTRY_IMAGE:TAG >>>"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+          envFrom:
+            - secretRef:
+                name: fenergo-secrets
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fenergo-data
+
+```
+
+job-run-report.yml:
+
+```yml
+# Minimal POC K8s shape (docs/decisions.md 2026-08-14): SQLite on a PVC-mounted path
+# instead of Postgres, --no-sftp instead of real SFTP delivery, alembic migration combined
+# into the same Job command as run-report since SQLite's file lives in the pod's own
+# filesystem and a separate migration Job would touch a different, unpersisted file unless
+# it shared this same PVC mount.
+#
+# imagePullPolicy: Never — this image only exists in the local Docker Desktop image cache
+# (docker build -t fenergo-platform:local .), never pushed to any registry. Devops's real
+# version of this file will reference a real registry image and drop this line (or set
+# IfNotPresent/Always per their registry policy).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+  namespace: fenergo-platform
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run-report
+          image: fenergo-platform:local
+          imagePullPolicy: Never
+          command: ["sh", "-c"]
+          args:
+            - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+          envFrom:
+            - secretRef:
+                name: fenergo-secrets
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fenergo-data
+
+```
+
+k8s/namespace.yaml:
+
+```yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fenergo-platform
+
+```
+
+k8s/pvc.yaml:
+
+```yml
+# Backs the SQLite file so it survives across separate Job runs — a fresh pod's local
+# filesystem is otherwise wiped every run (docs/decisions.md 2026-08-14). PVC-scoped POC
+# shape only; Postgres/Cloud SQL remains the confirmed real production target
+# (docs/persistence_strategy.md) once the GKE<->Cloud SQL connection mechanism is resolved.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenergo-data
+  namespace: fenergo-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+```
+
+secret.template.yaml"
+
+```yml
+# TEMPLATE — fill in the 6 REPLACE_ME values with real Fenergo credentials (presumably
+# sourced from Vault), save as secret.yaml, and import that file — NOT this one.
+# Do not commit the filled-in version to git.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fenergo-secrets
+  namespace: fenergo-platform
+type: Opaque
+stringData:
+  FENERGO_BASE_URL: "REPLACE_ME"
+  FENERGO_TENANT_ID: "REPLACE_ME"
+  FENERGO_CLIENT_ID: "REPLACE_ME"
+  FENERGO_CLIENT_SECRET: "REPLACE_ME"
+  FENERGO_TOKEN_URL: "REPLACE_ME"
+  FENERGO_SCOPE: "REPLACE_ME"
+
+```
+
+secret.yml:
+
+```yml
+# PLACEHOLDER VALUES — safe for local Tier-1 mechanics validation only (proves envFrom
+# wiring works), never for a real Fenergo call. Devops must replace every value below with
+# the real ones (probably sourced from Vault per docs/TDD.md §5) before using this in the
+# real cluster. Do not commit real credentials into this file.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fenergo-secrets
+  namespace: fenergo-platform
+type: Opaque
+stringData:
+  FENERGO_BASE_URL: "https://placeholder.example.com"
+  FENERGO_TENANT_ID: "placeholder-tenant"
+  FENERGO_CLIENT_ID: "placeholder-client"
+  FENERGO_CLIENT_SECRET: "placeholder-secret"
+  FENERGO_TOKEN_URL: "https://placeholder.example.com/token"
+  FENERGO_SCOPE: "placeholder-scope"
+
+```
+
+
+
+
+
