@@ -1,0 +1,40 @@
+# Minimal POC K8s shape (docs/decisions.md 2026-08-14): SQLite on a PVC-mounted path
+# instead of Postgres, --no-sftp instead of real SFTP delivery, alembic migration combined
+# into the same Job command as run-report since SQLite's file lives in the pod's own
+# filesystem and a separate migration Job would touch a different, unpersisted file unless
+# it shared this same PVC mount.
+#
+# imagePullPolicy: Never — this image only exists in the local Docker Desktop image cache
+# (docker build -t fenergo-platform:local .), never pushed to any registry. Devops's real
+# version of this file will reference a real registry image and drop this line (or set
+# IfNotPresent/Always per their registry policy).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+  namespace: fenergo-platform
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run-report
+          image: fenergo-platform:local
+          imagePullPolicy: Never
+          command: ["sh", "-c"]
+          args:
+            - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+          envFrom:
+            - secretRef:
+                name: fenergo-secrets
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fenergo-data

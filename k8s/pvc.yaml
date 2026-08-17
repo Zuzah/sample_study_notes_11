@@ -1,0 +1,15 @@
+# Backs the SQLite file so it survives across separate Job runs — a fresh pod's local
+# filesystem is otherwise wiped every run (docs/decisions.md 2026-08-14). PVC-scoped POC
+# shape only; Postgres/Cloud SQL remains the confirmed real production target
+# (docs/persistence_strategy.md) once the GKE<->Cloud SQL connection mechanism is resolved.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenergo-data
+  namespace: fenergo-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

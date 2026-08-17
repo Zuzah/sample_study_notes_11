@@ -1,0 +1,52 @@
+# PVC + Job — apply AFTER namespace.yaml and secret.yaml (this Job's Secret reference
+# must already exist, and both need the namespace to already exist).
+#
+# SQLite on a PersistentVolumeClaim (not Postgres) so the DB survives across separate Job
+# runs; --no-sftp so this run doesn't depend on real SFTP host/credentials being finalized
+# yet; alembic migration combined into the same command as run-report since SQLite's file
+# lives in the pod's own filesystem, so a separate migration Job would touch an
+# unpersisted, different file unless it shared this exact PVC mount.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenergo-data
+  namespace: fenergo-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+  namespace: fenergo-platform
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run-report
+          # <<< REPLACE WITH YOUR REGISTRY IMAGE >>> — the only line in this file that
+          # should need to change.
+          image: "<<< REPLACE_WITH_YOUR_REGISTRY_IMAGE:TAG >>>"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+          envFrom:
+            - secretRef:
+                name: fenergo-secrets
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fenergo-data
