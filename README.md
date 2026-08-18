@@ -747,9 +747,8 @@ Attached: deploy.yaml. It has envFrom.secretRef.name: fenergo-secrets expecting 
 Final Deploy:
 
 ```yml
-# Real IST environment — namespace (fenx-ist), PVC (ist-fenx), and Secret
-# (fenergo-secrets, synced from Vault) all already exist. This file only creates the Job
-# itself
+# Test Report call with Python app using real IST environment — namespace (fenx-ist), PVC (ist-fenx), and Secret
+# (fenergo-secrets, synced from Vault) all already exist. This file only creates the Job itself
 
 apiVersion: batch/v1
 kind: Job
