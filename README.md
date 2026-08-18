@@ -790,3 +790,22 @@ spec:
             claimName: ist-fenx
 ```
 
+# Steps
+
+# Fix: stale `reporting_platform.db` breaking `alembic upgrade head`
+
+| # | Action | Command | Confirm |
+|---|--------|---------|---------|
+| 1 | Delete the stale db file from the repo | `rm reporting_platform.db` | file gone |
+| 2 | Make sure `.dockerignore` excludes `*.db` (add if missing) | check for a `*.db` line in `.dockerignore` | line present |
+| 3 | Rebuild the image | `docker build -t af.cds.bns:5002/fenx/extractutilitypython:<next-tag> .` | build succeeds |
+| 4 | Push it | `docker push af.cds.bns:5002/fenx/extractutilitypython:<next-tag>` | image in registry |
+| 5 | Edit `deploy.yaml` | replace `image:` with the new tag | — |
+| 6 | Delete the old Job (it already exists from prior attempts) | Rancher → Jobs → delete `run-report-chinagtt` in `fenx-ist` | job removed |
+| 7 | Import the updated `deploy.yaml` | Rancher → **Import YAML** | Job reaches `1/1` |
+| 8 | Confirm | click pod → **View Logs** | alembic runs clean — no "table already exists" / "file is not a database" |
+
+Note: if you also test locally via `docker-compose.yml` (separate from the K8s path above), after step 1 run `touch reporting_platform.db` before your next `docker compose run` — that file is bind-mounted there, and Docker creates an empty directory instead of a file if it's missing entirely, which breaks SQLite a different way.
+
+
+
