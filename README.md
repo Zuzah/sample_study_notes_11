@@ -808,4 +808,121 @@ spec:
 Note: if you also test locally via `docker-compose.yml` (separate from the K8s path above), after step 1 run `touch reporting_platform.db` before your next `docker compose run` — that file is bind-mounted there, and Docker creates an empty directory instead of a file if it's missing entirely, which breaks SQLite a different way.
 
 
+diagnostic_k8s_proof.py:
+```python
+# Manual diagnostic script, not part of the automated test suite (see tests/ for that) -
+# Does not attempt SFTP delivery at all - only proves submit/poll/download/transform.
+#
+# Run as a module so repo-root imports resolve correctly:
+#   python -m poc.diagnostic_k8s_proof                        # defaults to ChinaGTTReport
+#   python -m poc.diagnostic_k8s_proof --report-name ChinaGTTReport
+#
+# Exit code 0 on success, 1 on failure - safe to use as a container's main command.
+
+import argparse
+import asyncio
+import logging
+import sys
+from datetime import datetime, timezone
+
+from app.core.config import settings
+from app.services.download_service import DownloadService
+from app.services.fenergo_service import FenergoService
+from app.services.polling_service import poll_until_ready
+from app.services.report_definition_service import ReportDefinitionService
+from app.services.transform.template_reader import TemplateReader
+from app.services.transform.transformation_service import TransformationService
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("diagnostic_k8s_proof")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Database-free proof that submit/poll/download/transform work "
+        "against real Fenergo - see this file's header comment for why this exists."
+    )
+    parser.add_argument(
+        "--report-name",
+        default="ChinaGTTReport",
+        help="Registered report name. Default: ChinaGTTReport (the only report with ",
+    )
+    return parser.parse_args()
+
+
+async def run(report_name: str) -> None:
+    fenergo_service = FenergoService()
+    download_service = DownloadService()
+    transformation_service = TransformationService()
+
+    log.info(f"[1/4] Submitting {report_name} to Fenergo...")
+    source = ReportDefinitionService.report_source(report_name)
+    submit_result = await fenergo_service.submit(
+        source=source, description=f"{report_name} k8s diagnostic proof"
+    )
+    log.info(f"[1/4] Submitted. report_id={submit_result.report_id}")
+
+    log.info("[2/4] Polling until ready...")
+    poll_result = await poll_until_ready(fenergo_service, submit_result.report_id)
+    if poll_result.status != "Completed":
+        raise RuntimeError(
+            f"Polling did not complete: status={poll_result.status} "
+            f"error={poll_result.error}"
+        )
+    log.info("[2/4] Report ready, presigned URL received.")
+
+    log.info("[3/4] Downloading...")
+    download_result = await download_service.download(
+        presigned_url=poll_result.presigned_url,
+        destination_filename=f"{submit_result.report_id}.csv",
+    )
+    log.info(
+        f"[3/4] Downloaded {download_result.size_bytes} bytes to "
+        f"{download_result.local_path}"
+    )
+
+    log.info("[4/4] Transforming...")
+    schema = TemplateReader.parse_template(
+        ReportDefinitionService.template_file_path(report_name)
+    )
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_path = settings.download_path / f"{report_name}_diagnostic_{timestamp}.csv"
+    transformation_service.transform_file(
+        input_path=download_result.local_path,
+        output_path=output_path,
+        schema=schema,
+    )
+    log.info(f"[4/4] Transformed output written to {output_path}")
+
+    print(f"PROOF SUCCEEDED: report_id={submit_result.report_id} output={output_path}")
+
+
+def main() -> None:
+    args = parse_args()
+    try:
+        asyncio.run(run(args.report_name))
+    except Exception as exc:
+        print(f"PROOF FAILED: {exc}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+entrypoint.sh:
+
+```sh
+#!/bin/sh
+
+echo "Running database-free Fenergo proof (submit/poll/download/transform, no SFTP)..."
+python -m poc.diagnostic_k8s_proof --report-name ChinaGTTReport
+
+```
+
 
