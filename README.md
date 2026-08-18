@@ -688,6 +688,29 @@ stringData:
 
 ```
 
+# Tues, Aug 18
+
+Do this for token
+
+```bash
+curl -k --location --request POST \
+  "https://lb.vault.nonprod.bns:8200/v1/secret/data/bjh9/gpe-gardengate/ist/b8fb/fenergo-secrets" \
+  --header "X-Vault-Token: <VAULT_TOKEN>" \
+  --header 'Content-Type: application/merge-patch+json' \
+  --header "X-Vault-Namespace: root" \
+  --data '{
+    "data": {
+      "FENERGO_BASE_URL": "<real value>",
+      "FENERGO_TOKEN_URL": "<real value>",
+      "FENERGO_TENANT_ID": "<real value>",
+      "FENERGO_CLIENT_ID": "<real value>",
+      "FENERGO_CLIENT_SECRET": "<real value>",
+      "FENERGO_SCOPE": "<real value>"
+    }
+  }'
+
+```
+
 
 
 
