@@ -738,6 +738,10 @@ spec:
 
 ```
 
+message:
 
+```txt
+Attached: deploy.yaml. It has envFrom.secretRef.name: fenergo-secrets expecting a plain K8s Secret synced from our Vault path (bjh9/gpe-gardengate/ist/b8fb/fenergo-secrets). You mentioned it only appears in Rancher once "used in the deployment" — does that mean I need pod annotations on this Job (Vault Agent Injector pattern) instead of envFrom, or a separate manifest (e.g. ExternalSecret/VaultStaticSecret) deployed alongside it? Could you point me to fenx-extractutility-python's manifest as the working example to copy?
+```
 
 
