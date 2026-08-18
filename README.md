@@ -744,4 +744,51 @@ message:
 Attached: deploy.yaml. It has envFrom.secretRef.name: fenergo-secrets expecting a plain K8s Secret synced from our Vault path (bjh9/gpe-gardengate/ist/b8fb/fenergo-secrets). You mentioned it only appears in Rancher once "used in the deployment" — does that mean I need pod annotations on this Job (Vault Agent Injector pattern) instead of envFrom, or a separate manifest (e.g. ExternalSecret/VaultStaticSecret) deployed alongside it? Could you point me to fenx-extractutility-python's manifest as the working example to copy?
 ```
 
+Final Deploy:
+
+```yml
+# Real IST environment — namespace (fenx-ist), PVC (ist-fenx), and Secret
+# (fenergo-secrets, synced from Vault) all already exist. This file only creates the Job
+# itself
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-report-chinagtt
+  namespace: fenx-ist
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run-report
+          # <<< REPLACE WITH YOUR REGISTRY IMAGE >>> — the only line in this file that
+          # should need to change.
+          image: "<<< REPLACE_WITH_YOUR_REGISTRY_IMAGE:TAG >>>"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+          envFrom:
+            # Rancher's Storage -> Secrets in fenx-ist before relying on this.
+            - secretRef:
+                name: fenergo-secrets
+          env:
+            # devops's normal CD pipeline sets this via commonConfigs/ist.yaml — this Job
+            # bypasses that pipeline (direct Import YAML)
+            - name: ENV
+              value: "ist"
+            - name: DATABASE_URL
+              value: "sqlite:////data/reporting_platform.db"
+          volumeMounts:
+            # /data is this container's own arbitrary mount point choice, not dictated by
+            # anything about the PVC itself — fine to change if devops has a convention.
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ist-fenx
+```
 
