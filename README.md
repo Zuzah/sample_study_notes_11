@@ -714,24 +714,27 @@ curl -k --location --request POST \
 See this throw away yaml workflow:
 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: ist-fenx-inspector
   namespace: fenx-ist
 spec:
-  restartPolicy: Never
-  containers:
-    - name: inspector
-      image: af.cds.bns:5002/fenx/extractutilitypython:0.0.2
-      command: ["sh", "-c", "ls -la /data"]
-      volumeMounts:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: inspector
+          image: af.cds.bns:5002/fenx/extractutilitypython:0.0.2
+          command: ["sh", "-c", "ls -la /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
         - name: data
-          mountPath: /data
-  volumes:
-    - name: data
-      persistentVolumeClaim:
-        claimName: ist-fenx
+          persistentVolumeClaim:
+            claimName: ist-fenx
 
 ```
 
