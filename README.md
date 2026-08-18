@@ -762,8 +762,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: run-report
-          # <<< REPLACE WITH YOUR REGISTRY IMAGE >>> — the only line in this file that
-          # should need to change.
+          # TODO: Replace with image tag
           image: "<<< REPLACE_WITH_YOUR_REGISTRY_IMAGE:TAG >>>"
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
