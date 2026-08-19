@@ -941,17 +941,27 @@ change command:
 
 ```yml
 command:
-  - python
-  - -m
-  - poc.diagnostic_k8s_proof
-  - --report-name
-  - ChinaGTTReport
+  # ── OPTION A: current placeholder (what's there now) ──────────────────────
+  # Does nothing. Only useful if you want to exec into the pod manually to poke around.
+  # - /bin/sh
+  # - -c
+  # - sleep 3600
 
-#command:
-#  - /bin/sh
-#  - -c
-#  - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+  # ── OPTION B: prove the APIs work right now, zero database (recommended next step) ──
+  # - python
+  # - -m
+  # - poc.diagnostic_k8s_proof
+  # - --report-name
+  # - ChinaGTTReport
+
+  # ── OPTION C: the real, full flow — use once the stale-database issue is fixed ──
+  # - /bin/sh
+  # - -c
+  # - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+
 
 ```
+
+
 
 
