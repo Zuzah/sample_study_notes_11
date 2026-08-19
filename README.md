@@ -925,4 +925,33 @@ python -m poc.diagnostic_k8s_proof --report-name ChinaGTTReport
 
 ```
 
+# Aug 19
+
+Update the yml
+
+ist.yml: add
+
+```yml
+extraEnvs:
+  - name: DATABASE_URL
+    value: "sqlite:////app/Audit/reporting_platform.db"
+```
+
+change command:
+
+```yml
+command:
+  - python
+  - -m
+  - poc.diagnostic_k8s_proof
+  - --report-name
+  - ChinaGTTReport
+
+#command:
+#  - /bin/sh
+#  - -c
+#  - "alembic upgrade head && python -m app.cli run-report ChinaGTTReport --no-sftp"
+
+```
+
 
