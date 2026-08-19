@@ -961,7 +961,14 @@ command:
 
 
 ```
+Commands you need to enter
+
+```bash
+docker compose run --rm app
+# overide
+docker compose run --rm --entrypoint "" app python -m app.cli --help
 
 
+```
 
 
