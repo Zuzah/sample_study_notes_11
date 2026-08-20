@@ -977,5 +977,11 @@ Add this ref if not already
   - name: DATABASE_URL
     value: "sqlite:////app/Audit/reporting_platform.db"
 ```
-
-
+```
+1	kubectl get pvc ist-fenx -n fenx-ist -o wide	Is the PVC itself Bound, or stuck Pending?
+2	kubectl describe pvc ist-fenx -n fenx-ist	Events at the bottom often show the real reason
+3	kubectl get pods -n fenx-ist | grep run-report	Get the exact failing pod's name
+4	kubectl describe pod <pod-name> -n fenx-ist	Full MountVolume.MountDevice error + events, more detail than Rancher's UI shows
+5	kubectl get volumeattachments | grep ist-fenx	Is the underlying volume still attached to a different, possibly dead node?
+6	kubectl describe volumeattachment <name-from-5>	Confirms which node it thinks it's attached to
+```
