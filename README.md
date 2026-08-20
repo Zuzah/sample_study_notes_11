@@ -971,4 +971,11 @@ docker compose run --rm --entrypoint "" app python -m app.cli --help
 
 ```
 
+Add this ref if not already
+
+```yml
+  - name: DATABASE_URL
+    value: "sqlite:////app/Audit/reporting_platform.db"
+```
+
 
