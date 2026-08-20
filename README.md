@@ -985,3 +985,46 @@ Add this ref if not already
 5	kubectl get volumeattachments | grep ist-fenx	Is the underlying volume still attached to a different, possibly dead node?
 6	kubectl describe volumeattachment <name-from-5>	Confirms which node it thinks it's attached to
 ```
+
+Dockerfile update:
+
+```Dockerfile
+# python:3.12.3-slim - pinned to the exact patch version confirmed in local dev, not a
+# floating 3.12-slim tag that could drift on a rebuild months from now. -slim over -alpine:
+# pandas/sqlalchemy have reliable prebuilt wheels for glibc (Debian-based); Alpine's musl
+# libc would risk forcing a source compile inside the corporate network build environment.
+FROM python:3.12.3-slim
+
+WORKDIR /app
+
+# Build-time toggle for which Python packages get installed - distinct from Settings.ENV
+# (app/core/config.py's DEV/STAGE/PROD runtime setting, e.g. HTTPX_VERIFY_SSL behavior).
+# This ARG only controls requirements-dev.txt below; it has no runtime effect on its own.
+ARG ENVIRONMENT=prod
+
+# Dependency layer cached separately from source so app/ changes don't bust this layer.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Dev tooling (black/pytest/pytest-asyncio) only installed when explicitly building for dev
+# (see docker-compose-dev.yml, which sets build.args.ENVIRONMENT: dev) - never in the prod
+# image, keeping it smaller and free of tooling that has no business running in production.
+COPY requirements-dev.txt .
+RUN if [ "$ENVIRONMENT" = "dev" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
+
+# Merge the bank's root CA bundle into Python's own trust store (certifi). httpx's
+# verify=True (what fenergo_service.py/download_service.py pass) uses certifi's bundled
+# CA list specifically, not the OS-level trust store - so this is required in addition to
+# any OS-level `update-ca-trust`/`update-ca-certificates` step, not instead of one.
+COPY docker/all_scotia_bundle.pem /tmp/all_scotia_bundle.pem
+RUN cat /tmp/all_scotia_bundle.pem >> $(python -c "import certifi; print(certifi.where())") \
+    && rm /tmp/all_scotia_bundle.pem
+
+COPY . .
+
+# No server process here (no FastAPI, out of scope for this phase) - this default is a
+# deliberate no-op so a bare `docker compose up` does nothing harmful. Real usage is always
+# `docker compose run --rm app <explicit command>` (see README.md "Running via Docker").
+CMD ["python", "--version"]
+
+```
