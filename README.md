@@ -1159,4 +1159,8 @@ Then if above there:
 
 openssl s_client -connect identity.can1.fenergox.com:443 -showcerts </dev/null 2>&1 | head -100
 
+and then
+curl -v https://identity.can1.fenergox.com/connect/token 2>&1 | tail -30
+
+
 ```
