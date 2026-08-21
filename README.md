@@ -1200,3 +1200,14 @@ EOF
 
 
 ```
+
+Now this:
+
+```bash
+python3 -c "
+import httpx
+r = httpx.get('https://identity.can1.fenergox.com/connect/token', verify=False, timeout=15)
+print(r.status_code)
+"
+
+```
