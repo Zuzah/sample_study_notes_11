@@ -1148,3 +1148,15 @@ RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
 ```
+
+Fixes need after above change, try:
+
+
+```bash
+python -c "import certifi; c = open(certifi.where()).read(); print(len(c)); print(c[-4000:])"
+
+Then if above there:
+
+openssl s_client -connect identity.can1.fenergox.com:443 -showcerts </dev/null 2>&1 | head -100
+
+```
