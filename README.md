@@ -1028,3 +1028,123 @@ COPY . .
 CMD ["python", "--version"]
 
 ```
+
+Add these to the ist.yaml
+
+```yml
+commonSecretVolumes:
+  - name: sftp-keys
+    secret:
+      secretName: sftp-secret   # already exists, already synced from Vault
+
+volumeMounts:
+  - name: ist-fenx
+    mountPath: /app/Audit
+  - name: sftp-keys
+    mountPath: /app/sftp-keys
+    readOnly: true
+
+extraEnvs:
+  - name: SFTP_PRIVATE_KEY_PATH
+    value: /app/sftp-keys/<key-name-as-stored-in-vault>
+  - name: SFTP_KNOWN_HOSTS_PATH
+    value: /app/sftp-keys/<key-name-as-stored-in-vault>
+
+```
+
+# Friday, Aug 21
+
+Use this dockerfile:
+
+```Dockerfile
+FROM af.cds.bns:5002/gpe/gpe-python-images/python:0.1.1
+
+ARG ENVIRONMENT=prod
+USER 0
+
+WORKDIR /app
+
+# Comment Back when Deploying to k8
+ENV http_proxy=http://webproxy.bns:8080
+ENV https_proxy=http://webproxy.bns:8080
+ENV https_proxy=http://webproxy.bns:8080
+ENV HTTP_PROXY=http://webproxy.bns:8080
+ENV HTTPS_PROXY=http://webproxy.bns:8080
+ENV NO_PROXY=localhost,127.0.0.1,0.0.0.0,172.26.141.1/16,172.26.127.1/16,10.43.0.1/16,192.168.56.1/16,192.168.56.5,.cloud.bns,cloud.bns,.agile.bns,
+ENV no_proxy=localhost,127.0.0.1,0.0.0.0,172.26.141.1/16,172.26.127.1/16,10.43.0.1/16,192.168.56.1/16,192.168.56.5,.cloud.bns,cloud.bns,.agile.bns,
+
+# Install corporate root CA
+# Scotia/Zscaler corporate root CA required for outbound TLS
+# connections to PyPI during Docker builds.
+COPY docker/corp-root.crt /usr/local/share/ca-certificates/corp-root.crt
+
+#RUN apt-get update && \
+#    apt-get install -y ca-certificates && \
+#    update-ca-certificates
+
+#RUN update-ca-certificates
+
+
+COPY docker/corp-root.crt /etc/pki/ca-trust/source/anchors/corp-root.crt
+COPY docker/all_scotia_bundle.pem /etc/pki/ca-trust/source/anchors/all_scotia_bundle.pem
+RUN python -c "import ssl; print(ssl.get_default_verify_paths())"
+
+##RUN yum install -y ca-certificates && \
+##    update-ca-trust
+
+RUN update-ca-trust extract
+
+
+# Configure pip
+RUN mkdir -p /root/.config/pip
+
+
+RUN mkdir -p /data
+
+COPY raw_input.csv /app/data/raw_input.csv
+COPY docker/pip.conf /root/.config/pip/pip.conf
+
+COPY requirements.txt .
+COPY requirements-dev.txt .
+
+RUN mkdir -p /root/.pip
+
+# Move pip.conf to where pip actually reads it
+COPY docker/pip.conf /root/.pip/pip.conf
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    httpx==0.27.0 \
+    pandas==2.2.1 \
+    pydantic-settings==2.2.1 \
+    loguru==0.7.2 \
+    sqlalchemy>=2.0 \
+    alembic>=1.13 \
+    tenacity>=8.2 \
+    paramiko>=3.4 \
+    black==26.5.1 \
+    pytest==9.1.1 \
+    pytest-asyncio>=0.24 \
+    typer>=0.12 \
+    psycopg2-binary>=2.9
+
+
+#RUN pip install --no-cache-dir -r requirements.txt
+
+#RUN if [ "$ENVIRONMENT" = "dev" ]; then \
+#    pip install --no-cache-dir -r requirements-dev.txt; \
+#    fi
+
+# Merge the bank's CA bundle into Python's own certifi trust store. The OS-level
+RUN cat /etc/pki/ca-trust/source/anchors/all_scotia_bundle.pem >> $(python -c "import certifi; print(certifi.where())")
+
+COPY . .
+
+CMD ["python", "--version"]
+
+COPY entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+```
