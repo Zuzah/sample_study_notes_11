@@ -1211,3 +1211,15 @@ print(r.status_code)
 "
 
 ```
+
+adn then this:
+
+```bash
+python3 -c "
+import certifi
+c = open(certifi.where()).read()
+print('BEGIN markers:', c.count('-----BEGIN CERTIFICATE-----'))
+print('END markers  :', c.count('-----END CERTIFICATE-----'))
+"
+
+```
