@@ -1172,17 +1172,31 @@ python3 - <<'EOF'
 import ssl, socket
 from cryptography import x509
 
-host = "identity.can1.fenergox.com"
+proxy_host, proxy_port = "webproxy.bns", 8080
+target_host, target_port = "identity.can1.fenergox.com", 443
+
+sock = socket.create_connection((proxy_host, proxy_port), timeout=10)
+req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n"
+sock.sendall(req.encode())
+
+resp = b""
+while b"\r\n\r\n" not in resp:
+    chunk = sock.recv(4096)
+    if not chunk:
+        break
+    resp += chunk
+print("Proxy response:", resp.decode(errors="replace").splitlines()[0])
+
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE  # deliberately not verifying, just inspecting
+ctx.verify_mode = ssl.CERT_NONE
 
-with socket.create_connection((host, 443), timeout=10) as sock:
-    with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-        der = ssock.getpeercert(binary_form=True)
-        cert = x509.load_der_x509_certificate(der)
-        print("Subject:", cert.subject.rfc4514_string())
-        print("Issuer :", cert.issuer.rfc4514_string())
+with ctx.wrap_socket(sock, server_hostname=target_host) as ssock:
+    der = ssock.getpeercert(binary_form=True)
+    cert = x509.load_der_x509_certificate(der)
+    print("Subject:", cert.subject.rfc4514_string())
+    print("Issuer :", cert.issuer.rfc4514_string())
 EOF
+
 
 ```
