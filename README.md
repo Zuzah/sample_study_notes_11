@@ -1164,3 +1164,25 @@ curl -v https://identity.can1.fenergox.com/connect/token 2>&1 | tail -30
 
 
 ```
+
+now do the following:
+
+```bash
+python3 - <<'EOF'
+import ssl, socket
+from cryptography import x509
+
+host = "identity.can1.fenergox.com"
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE  # deliberately not verifying, just inspecting
+
+with socket.create_connection((host, 443), timeout=10) as sock:
+    with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+        der = ssock.getpeercert(binary_form=True)
+        cert = x509.load_der_x509_certificate(der)
+        print("Subject:", cert.subject.rfc4514_string())
+        print("Issuer :", cert.issuer.rfc4514_string())
+EOF
+
+```
